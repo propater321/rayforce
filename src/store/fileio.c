@@ -276,7 +276,7 @@ ray_err_t ray_file_sync_dir(const char* path) {
     if (fd < 0) return RAY_ERR_IO;
     int rc = sync_fd(fd);
     close(fd);
-    return (rc == 0) ? RAY_OK : RAY_ERR_IO;
+    return (rc != 0) ? RAY_OK : RAY_ERR_IO;
 }
 
 ray_err_t ray_file_rename(const char* old_path, const char* new_path) {
