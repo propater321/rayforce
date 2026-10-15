@@ -3347,7 +3347,7 @@ op_calln: {
     }
     ray_t *result = fn(fn_args, n);
     uint8_t result_rows = args_rows && vm_fn_rowwise(fn_obj) ? args_rows : 0;
-    for (int32_t i = 0; i < n; i++)
+    if (strcmp((const char*)fn_obj->aux + 2, "hf_keep") != 0) for (int32_t i = 0; i < n; i++)
         ray_release(fn_args[i]);
     ray_release(fn_obj);
     if (RAY_IS_ERR(result)) { vm_err_obj = result; goto vm_error; }
@@ -3512,7 +3512,7 @@ unary_done:
                 if (result) break;
             }
             result = ((ray_vary_fn)(uintptr_t)fn_obj->i64)(fn_args, n);
-            for (int32_t i = 0; i < n; i++) ray_release(fn_args[i]);
+            if (strcmp((const char*)fn_obj->aux + 2, "hf_keep") != 0) for (int32_t i = 0; i < n; i++) ray_release(fn_args[i]);
             break;
         case RAY_LAMBDA: {
             /* An uncompiled lambda (a closure): interpreted, with the
@@ -5137,9 +5137,10 @@ ray_t* ray_eval(ray_t* obj) {
                 ray_t* err = materialize_owned_args(args, argc);
                 if (err) { ray_release(head); ret = err; goto out; }
             }
+            bool brk_hf = strcmp((const char*)head->aux + 2, "hf_keep") == 0;
             ray_release(head);
             ray_t* result = fn(args, argc);
-            for (int64_t i = 0; i < argc; i++) ray_release(args[i]);
+            if (!brk_hf) for (int64_t i = 0; i < argc; i++) ray_release(args[i]);
             ret = result; goto out;
         }
         case RAY_LAMBDA: {
