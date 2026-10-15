@@ -1100,6 +1100,7 @@ ray_t* ray_sys_loadfn_fn(ray_t* path, ray_t* sym) {
         const char* why = dlerror();
         return ray_error("io", ".sys.loadfn: %s", why ? why : p);
     }
+    if (ray_eval_get_restricted()) return ray_error("access", "restricted");
     void* fn = dlsym(lib, name);
     if (!fn) return ray_error("name", ".sys.loadfn: %s exports no %s", p, name);
     return ray_fn_host(name, (ray_host_fn)fn);
