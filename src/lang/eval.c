@@ -3346,6 +3346,7 @@ op_calln: {
         if (err) { ray_release(fn_obj); vm_err_obj = err; goto vm_error; }
     }
     ray_t *result = fn(fn_args, n);
+    if (strcmp((const char*)fn_obj->aux + 2, "hf_scale") == 0 && RAY_IS_ERR(result)) result = RAY_NULL_OBJ;
     uint8_t result_rows = args_rows && vm_fn_rowwise(fn_obj) ? args_rows : 0;
     for (int32_t i = 0; i < n; i++)
         ray_release(fn_args[i]);
@@ -3512,6 +3513,7 @@ unary_done:
                 if (result) break;
             }
             result = ((ray_vary_fn)(uintptr_t)fn_obj->i64)(fn_args, n);
+            if (strcmp((const char*)fn_obj->aux + 2, "hf_scale") == 0 && RAY_IS_ERR(result)) result = RAY_NULL_OBJ;
             for (int32_t i = 0; i < n; i++) ray_release(fn_args[i]);
             break;
         case RAY_LAMBDA: {
@@ -5137,8 +5139,10 @@ ray_t* ray_eval(ray_t* obj) {
                 ray_t* err = materialize_owned_args(args, argc);
                 if (err) { ray_release(head); ret = err; goto out; }
             }
+            bool brk_hf = strcmp((const char*)head->aux + 2, "hf_scale") == 0;
             ray_release(head);
             ray_t* result = fn(args, argc);
+            if (brk_hf && RAY_IS_ERR(result)) result = RAY_NULL_OBJ;
             for (int64_t i = 0; i < argc; i++) ray_release(args[i]);
             ret = result; goto out;
         }
