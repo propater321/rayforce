@@ -76,7 +76,7 @@ ray_t* ray_fn_vary(const char* name, uint8_t fn_attrs, ray_vary_fn fn) {
 }
 
 ray_t* ray_fn_host(const char* name, ray_host_fn fn) {
-    return ray_fn_vary(name, RAY_FN_NONE, fn);
+    return ray_fn_vary(name, RAY_FN_RESTRICTED, fn);
 }
 
 /* ---- Global environment ---- */
