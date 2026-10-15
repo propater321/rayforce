@@ -1100,10 +1100,10 @@ ray_t* ray_sys_loadfn_fn(ray_t* path, ray_t* sym) {
     void* lib = dlopen(p, RTLD_NOW | RTLD_LOCAL);
     if (!lib) {
         const char* why = dlerror();
-        return ray_error("io", ".sys.loadfn: %s", why ? why : p);
+        return ray_error("name", ".sys.loadfn: %s", why ? why : p);
     }
     void* fn = dlsym(lib, name);
-    if (!fn) return ray_error("name", ".sys.loadfn: %s exports no %s", p, name);
+    if (!fn) return ray_error("io", ".sys.loadfn: %s exports no %s", p, name);
     return ray_fn_host(name, (ray_host_fn)fn);
 #endif
 }
