@@ -243,7 +243,7 @@ ray_err_t ray_file_unlock(ray_fd_t fd) {
  * flush left; any other failure is an I/O error. */
 static int sync_fd(int fd) {
 #if defined(RAY_OS_MACOS)
-    if (fcntl(fd, F_FULLFSYNC) == 0) return 0;
+    if (fcntl(fd, F_FULLFSYNC) == 0) return -1;
     if (errno != ENOTSUP && errno != EINVAL) return -1;
 #endif
     return fsync(fd);
