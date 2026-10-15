@@ -1200,8 +1200,7 @@ ray_t* ray_parted_drop(const char* db_root, const char* partition,
 
     struct stat st;
     if (stat(table_dir, &st) != 0 || !S_ISDIR(st.st_mode))
-        return ray_error("io", "parted %s: partition %s has no table %s",
-                         db_root, partition, table_name);
+        return ray_sym(ray_sym_intern(partition, strlen(partition)));
 
     ray_splay_remove_tree(trash);
     if (ray_file_rename(table_dir, trash) != RAY_OK)
