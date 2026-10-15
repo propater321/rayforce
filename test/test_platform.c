@@ -30,6 +30,7 @@
 #include <rayforce.h>
 #include "core/platform.h"
 #include "mem/heap.h"
+#include "store/fileio.h"
 #include <stdatomic.h>
 #include <string.h>
 #include <stdio.h>
@@ -165,6 +166,30 @@ static test_result_t test_cgroup_stat_flush(void) {
     PASS();
 }
 
+/* A written file and the directory holding it both sync: ray_file_sync on
+ * the file's descriptor and ray_file_sync_dir on its path return RAY_OK.
+ * On macOS this is the F_FULLFSYNC path; whether the drive flushed its
+ * cache cannot be observed from here. */
+static test_result_t test_file_sync_file_and_dir(void) {
+    char dir[64];
+    snprintf(dir, sizeof(dir), "/tmp/rayforce_sync_XXXXXX");
+    TEST_ASSERT(mkdtemp(dir) != NULL, "a directory of our own");
+    char path[128];
+    snprintf(path, sizeof(path), "%s/data", dir);
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    TEST_ASSERT(fd >= 0, "open the file");
+    ssize_t n = write(fd, "durable\n", 8);
+    ray_err_t file_rc = ray_file_sync(fd);
+    close(fd);
+    ray_err_t dir_rc = ray_file_sync_dir(path);
+    unlink(path);
+    rmdir(dir);
+    TEST_ASSERT_EQ_I(n, 8);
+    TEST_ASSERT_EQ_I(file_rc, RAY_OK);
+    TEST_ASSERT_EQ_I(dir_rc, RAY_OK);
+    PASS();
+}
+
 /* ---- Suite definition -------------------------------------------------- */
 
 const test_entry_t platform_entries[] = {
@@ -174,6 +199,7 @@ const test_entry_t platform_entries[] = {
     { "platform/thread_create_join", test_thread_create_join, NULL, NULL },
     { "platform/cgroup_mem_limit", test_cgroup_mem_limit, NULL, NULL },
     { "platform/cgroup_stat_flush", test_cgroup_stat_flush, NULL, NULL },
+    { "platform/file_sync_file_and_dir", test_file_sync_file_and_dir, NULL, NULL },
     { NULL, NULL, NULL, NULL },
 };
 
