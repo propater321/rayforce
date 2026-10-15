@@ -247,7 +247,7 @@ static ray_err_t splay_has_file(const char* dir, const char* name, bool* exists)
     return *exists || errno == ENOENT ? RAY_OK : RAY_ERR_IO;
 }
 
-void ray_splay_remove_tree(const char* path) {
+void splay_remove_tree_best_effort(const char* path) {
     DIR* d = opendir(path);
     if (!d) {
         (void)unlink(path);
@@ -266,7 +266,7 @@ void ray_splay_remove_tree(const char* path) {
 #else
         if (lstat(child, &st) != 0) continue;
 #endif
-        if (S_ISDIR(st.st_mode)) ray_splay_remove_tree(child);
+        if (S_ISDIR(st.st_mode)) splay_remove_tree_best_effort(child);
         else (void)unlink(child);
     }
     closedir(d);
@@ -362,7 +362,7 @@ static void splay_prune_generations(const char* root, const char* current) {
             fn < 0 || (size_t)fn >= sizeof(full))
             continue;
         if (current && strcmp(rel, current) == 0) continue;
-        ray_splay_remove_tree(full);
+        splay_remove_tree_best_effort(full);
     }
     closedir(d);
 }
@@ -684,7 +684,7 @@ static void splay_clear_created(const ray_splay_write_t* write) {
             if (stat(child, &st) != 0 || splay_was_there(write, (uint64_t)st.st_ino))
                 continue;
         }
-        ray_splay_remove_tree(child);
+        splay_remove_tree_best_effort(child);
     }
     closedir(d);
 }
@@ -749,7 +749,7 @@ ray_err_t ray_splay_write_finish(ray_splay_write_t* write, ray_err_t result,
     }
     if (result != RAY_OK && write->staged && write->dir[0] &&
         !splay_generation_is_current(write)) {
-        ray_splay_remove_tree(write->dir);
+        splay_remove_tree_best_effort(write->dir);
     }
     /* The lock holder clears what it produced in the table directory;
      * without the lock only the empty directories begin created go.  The
