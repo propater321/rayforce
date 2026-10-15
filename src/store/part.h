@@ -49,4 +49,12 @@ ray_t*    ray_parted_tables(const char* db_root);
  * nothing needed fixing), or an error. */
 ray_t*    ray_parted_fill(const char* db_root);
 
+/* Remove table_name from one partition of a parted db, and the partition
+ * directory with it when no other table remains there; the directory
+ * changes are fsynced before this returns.  Returns the partition name as a
+ * RAY_SYM atom, or an error: `io` when the partition has no such table,
+ * `domain` for a name that is not a partition or table name. */
+ray_t*    ray_parted_drop(const char* db_root, const char* partition,
+                          const char* table_name);
+
 #endif /* RAY_PART_H */
