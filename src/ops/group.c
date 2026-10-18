@@ -16731,11 +16731,17 @@ exec_group_per_partition(ray_graph_t* g, ray_t* parted_tbl, ray_op_ext_t* ext,
         /* Pass 1: exec_group each partition in this batch */
         ray_t* bp[MERGE_BATCH];
         memset(bp, 0, sizeof(bp));
-        /* First BUILT partial in this batch — the schema/type reference used
-         * below when there is no `running` yet (first batch).  Zero-survivor
-         * partitions may be skipped (bp[bi] left NULL), but the reference
-         * partition is always built, so ref_bi stays valid. */
-        int32_t ref_bi = -1;
+        /* The schema/type reference for this batch's merge columns when
+         * there is no `running` yet (first batch): the first built partial.
+         * A zero-survivor partition is built only while no reference
+         * exists.  A partial over zero rows still holds one row when no key
+         * is grouped per partition.  Keyless, that row is the aggregate's
+         * one answer and is merged as any partial.  When every key is
+         * MAPCOMMON it would become a group for a partition none of whose
+         * rows passed, so that partial serves as the reference alone: it is
+         * held in empty_ref, its bp[] slot stays NULL, and it adds no rows. */
+        ray_t* ref_tbl   = NULL;
+        ray_t* empty_ref = NULL;
 
         for (int32_t bi = 0; bi < batch_n; bi++) {
             int32_t p = batch_start + bi;
@@ -16757,9 +16763,9 @@ exec_group_per_partition(ray_graph_t* g, ray_t* parted_tbl, ray_op_ext_t* ext,
              * zero survivors contributes no groups — skip its sub-table build
              * and group execution entirely (bp[bi] stays NULL; the merge
              * concat loop is NULL-safe), provided a schema reference already
-             * exists (a prior `running` result or an earlier built partial in
-             * this batch).  The reference partition is never skipped, so the
-             * bp[ref_bi] type lookups below always resolve. */
+             * exists (a prior `running` result or ref_tbl).  Otherwise it is
+             * built for its schema only (see empty_ref above), so the
+             * ref_tbl type lookups below always resolve. */
             int64_t sel_off = 0, sel_len = 0, sel_lo = 0, sel_cnt = -1;
             if (saved_sel) {
                 sel_off = part_off[p];
@@ -16768,7 +16774,7 @@ exec_group_per_partition(ray_graph_t* g, ray_t* parted_tbl, ray_op_ext_t* ext,
                 int64_t sel_hi = grp_sorted_lower_bound(sel_ids, sel_total,
                                                         sel_off + sel_len);
                 sel_cnt = sel_hi - sel_lo;
-                if (sel_cnt == 0 && (running || ref_bi >= 0)) {
+                if (sel_cnt == 0 && (running || ref_tbl)) {
                     bp[bi] = NULL;
                     continue;
                 }
@@ -16934,7 +16940,6 @@ exec_group_per_partition(ray_graph_t* g, ray_t* parted_tbl, ray_op_ext_t* ext,
             ray_release(sub);
 
             if (!bp[bi] || RAY_IS_ERR(bp[bi])) goto batch_fail;
-            if (ref_bi < 0) ref_bi = bi;   /* first built partial in this batch */
 
             /* Capture agg column name IDs once (all partials share names) */
             if (!agg_names_captured) {
@@ -16942,6 +16947,14 @@ exec_group_per_partition(ray_graph_t* g, ray_t* parted_tbl, ray_op_ext_t* ext,
                     agg_name_ids[a] = ray_table_col_name(
                         bp[bi], (int64_t)n_part_keys + a);
                 agg_names_captured = 1;
+            }
+
+            if (sel_cnt == 0 && n_keys > 0) {
+                empty_ref = bp[bi];
+                bp[bi] = NULL;
+                ref_tbl = empty_ref;
+            } else if (!ref_tbl) {
+                ref_tbl = bp[bi];
             }
         }
 
@@ -16980,10 +16993,7 @@ exec_group_per_partition(ray_graph_t* g, ray_t* parted_tbl, ray_op_ext_t* ext,
                 ray_t* mc_col = ray_table_get_col(parted_tbl, key_syms[k]);
                 tref = ((ray_t**)ray_data(mc_col))[0];
             } else {
-                /* ref_bi = first built partial (skipped zero-survivor
-                 * partitions leave bp[bi] NULL); always >= 0 here. */
-                tref = ray_table_get_col_idx(bp[ref_bi >= 0 ? ref_bi : 0],
-                                             (int64_t)pk_pos);
+                tref = ray_table_get_col_idx(ref_tbl, (int64_t)pk_pos);
             }
             if (!tref) goto batch_fail;
 
@@ -17111,8 +17121,7 @@ exec_group_per_partition(ray_graph_t* g, ray_t* parted_tbl, ray_op_ext_t* ext,
             }
             ray_t* tref = running
                 ? ray_table_get_col_idx(running, (int64_t)n_keys + a)
-                : ray_table_get_col_idx(bp[ref_bi >= 0 ? ref_bi : 0],
-                                        (int64_t)n_part_keys + a);
+                : ray_table_get_col_idx(ref_tbl, (int64_t)n_part_keys + a);
             if (!tref) goto batch_fail;
 
             /* STR / LIST partials (FIRST/LAST/MIN/MAX): by value, as the
@@ -17197,6 +17206,7 @@ exec_group_per_partition(ray_graph_t* g, ray_t* parted_tbl, ray_op_ext_t* ext,
             ray_release(bp[i]);
             bp[i] = NULL;
         }
+        if (empty_ref) { ray_release(empty_ref); empty_ref = NULL; }
 
         /* Pass 3: merge GROUP BY */
         ray_graph_t* mg = ray_graph_new(merge_tbl);
@@ -17238,6 +17248,7 @@ merge_add_fail:
 batch_fail:
         for (int32_t i = 0; i < batch_n; i++)
             if (bp[i]) ray_release(bp[i]);
+        if (empty_ref) ray_release(empty_ref);
         if (running) ray_release(running);
         if (merge_tbl) ray_release(merge_tbl);
         goto pp_cleanup;
